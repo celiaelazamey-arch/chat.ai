@@ -6,6 +6,13 @@
 import { ImmuneRuntime } from '@aok/immune';
 import { createLocalSmokeRunner, LocalRunner } from './local-runner';
 import { buildOwnershipProof } from './ownership-prove';
+import { createGithubRunnerFromEnv } from './github-runner';
+import {
+  formatConnectionReport,
+  githubTransportFromEnv,
+  parseOwnerRepo,
+  verifyGithubConnection,
+} from './github-connect';
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
@@ -43,9 +50,14 @@ async function main(): Promise<void> {
       console.log(runner.router.discover().map((m) => `${m.providerId}/${m.id} ($${m.costPer1kInputUsd}/1k)`).join('\n'));
       return;
 
-    case 'tools':
-      console.log(runner.executors.list().join('\n') || '(no executors registered)');
+    case 'tools': {
+      // عند وجود اعتماد GitHub تظهر الأدوات الحقيقية المسجّلة في مسار التنفيذ، وإلا إرشاد للاتصال.
+      const githubRunner = createGithubRunnerFromEnv();
+      const tools = githubRunner ? githubRunner.executors.list() : runner.executors.list();
+      console.log(tools.join('\n') || '(no executors registered)');
+      if (!githubRunner) console.log('(github: not connected — set GH_TOKEN, then: celia runner connect)');
       return;
+    }
 
     case 'run': {
       const intent = args.join(' ') || 'demo task';
@@ -63,13 +75,39 @@ async function main(): Promise<void> {
       return;
     }
 
-    case 'runner':
+    case 'runner': {
       if (args[0] === 'start') {
         console.log('celia runner started (local) — $0');
         return;
       }
-      console.log('celia runner install | connect | start');
+      if (args[0] === 'connect') {
+        // تحقق حقيقي: مصادقة GitHub + صلاحية المستودع وصلاحيات الاعتماد عليه — دون طباعة السر أبدًا.
+        const rest = args.slice(1);
+        const json = rest.includes('--json');
+        const repoArg = rest.find((a) => !a.startsWith('--'));
+        const fromEnv = githubTransportFromEnv();
+        if (!fromEnv) {
+          console.log('github: NOT CONNECTED — no credential found');
+          console.log('set GH_TOKEN (or GITHUB_TOKEN) in the environment — never commit it — then rerun: celia runner connect [owner/repo]');
+          process.exitCode = 1;
+          return;
+        }
+        let target: { owner: string; repo: string };
+        try {
+          target = parseOwnerRepo(repoArg);
+        } catch (err) {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exitCode = 1;
+          return;
+        }
+        const report = await verifyGithubConnection({ transport: fromEnv.transport, ...target });
+        console.log(json ? JSON.stringify(report, null, 2) : formatConnectionReport(report, fromEnv.source));
+        if (!report.connected) process.exitCode = 1;
+        return;
+      }
+      console.log('usage: celia runner <start|connect [owner/repo] [--json]>');
       return;
+    }
 
     case 'ownership':
       if (args[0] === 'prove') {
@@ -84,7 +122,7 @@ async function main(): Promise<void> {
       return;
 
     default:
-      console.log('usage: celia <mode|run|ledger|tools|models|runner|health|safe-mode|emergency-lock|ownership prove>');
+      console.log('usage: celia <mode|run|ledger|tools|models|runner connect|health|safe-mode|emergency-lock|ownership prove>');
   }
 }
 

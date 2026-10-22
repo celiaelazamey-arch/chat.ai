@@ -30,6 +30,8 @@ import { MockProvider, ModelRouter } from '@aok/models';
 import { InMemoryVault } from '@aok/vault';
 import { NoopBillingAdapter } from '@aok/billing';
 import { ImmuneRuntime, type Principal } from '@aok/immune';
+import { GitHubPlugin, type GitHubTransport } from '@aok/github';
+import { GITHUB_APPROVAL_POLICY, githubGrantsFor } from './github-policy';
 
 /** وضع التشغيل (ECONOMIC PRINCIPLE 002/004): local = أولوية، cloud = تبديل adapters فقط. */
 export type RunMode = 'local' | 'cloud';
@@ -52,11 +54,25 @@ export interface ApprovalRequest {
   reason: string;
 }
 
+/** تفعيل GitHub داخل مسار التنفيذ الفعلي — صريح دائمًا، لا يحدث بمجرد تثبيت الإضافة. */
+export interface GithubIntegrationOptions {
+  /** وسيلة نقل مُهيأة بالاعتماد (الـRunner لا يرى السر الخام أبدًا). */
+  transport: GitHubTransport;
+  /** الـprincipal الذي تُمنح له قدرات GitHub. الافتراضي: 'coder'. */
+  principal?: string;
+}
+
 export interface RunnerOptions {
   mode?: RunMode;
   budget?: BudgetPolicy;
   grants?: Grant[];
   approvalPolicy?: ApprovalPolicy;
+  /**
+   * عند تقديمه: تُسجَّل عمليات GitHub السبع في سجل المنفّذين، وتُمنح للـprincipal
+   * بسياسة GITHUB_APPROVAL_POLICY المشدّدة (قراءات تلقائية، كتابات بموافقة صريحة).
+   * بدونه يبقى الـRunner كما كان: deny-by-default بلا أي منفّذ GitHub.
+   */
+  github?: GithubIntegrationOptions;
   /** الـLedger (اختياري): مرّر DurableLedger لتثبيت الأحداث في EventStore دائم. */
   ledger?: Ledger;
   onApprovalRequired?: (req: ApprovalRequest) => Promise<boolean> | boolean;
@@ -158,6 +174,8 @@ export class LocalRunner {
   readonly vault = new InMemoryVault();
   /** الجهاز المناعي — القاعدة الذهبية: كل خطوة تمر عبر Immune Gate قبل التنفيذ. */
   readonly immune: ImmuneRuntime;
+  /** إضافة GitHub المفعّلة صراحة عبر RunnerOptions.github — غائبة في الوضع الافتراضي. */
+  readonly githubPlugin?: GitHubPlugin;
 
   private policy: PolicyEngine;
   private quota: BudgetQuota;
@@ -179,11 +197,30 @@ export class LocalRunner {
     });
     this.mode = opts.mode ?? modeFromEnv();
     this.quota = new BudgetQuota(opts.budget ?? FREE_BUDGET);
-    this.policy = new PolicyEngine(opts.grants ?? [], opts.approvalPolicy ?? DEFAULT_APPROVAL_POLICY);
+    if (opts.github) {
+      // ربط GitHub المتكامل: منح أدنى للقدرات السبع + سياسة موافقة مشدّدة،
+      // مع أولوية أي سياسة يقدّمها المتصل صراحة فوق الافتراضي.
+      const grants = [...(opts.grants ?? []), ...githubGrantsFor(opts.github.principal ?? 'coder')];
+      const approvalPolicy = {
+        ...DEFAULT_APPROVAL_POLICY,
+        ...GITHUB_APPROVAL_POLICY,
+        ...(opts.approvalPolicy ?? {}),
+      };
+      this.policy = new PolicyEngine(grants, approvalPolicy);
+    } else {
+      this.policy = new PolicyEngine(opts.grants ?? [], opts.approvalPolicy ?? DEFAULT_APPROVAL_POLICY);
+    }
     this.onApprovalRequired = opts.onApprovalRequired;
     this.billing = opts.billing ?? new NoopBillingAdapter();
     this.capabilityGuard = opts.capabilityGuard;
     this.immune = new ImmuneRuntime({ ledger: this.ledger });
+
+    if (opts.github) {
+      // تسجيل الإضافة في سجل المنفّذين نفسه الذي يمر عبره execute() والسياسة والـImmune Gate —
+      // أي داخل مسار التنفيذ الفعلي، لا مجرد وجودها في المشروع.
+      this.githubPlugin = new GitHubPlugin(opts.github.transport);
+      this.githubPlugin.register(this.executors);
+    }
   }
 
   registerExecutor(action: string, executor: CapabilityExecutor): void {

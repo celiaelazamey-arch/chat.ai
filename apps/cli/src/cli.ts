@@ -8,6 +8,12 @@ import { createLocalSmokeRunner, LocalRunner } from './local-runner';
 import { buildOwnershipProof } from './ownership-prove';
 import { createGithubRunnerFromEnv } from './github-runner';
 import {
+  buildGithubRunPlan,
+  createStdinInteractiveApproval,
+  hasGithubWriteSteps,
+  summarizeGithubOutput,
+} from './github-run';
+import {
   formatConnectionReport,
   githubTransportFromEnv,
   parseOwnerRepo,
@@ -60,12 +66,54 @@ async function main(): Promise<void> {
     }
 
     case 'run': {
-      const intent = args.join(' ') || 'demo task';
-      const outcome = await runner.run(intent);
-      console.log(`verdict: ${outcome.verdict}`);
-      console.log(`usage: ${JSON.stringify(outcome.usage.total)}`);
-      console.log(`evidence: ${outcome.verification.evidence.length} item(s)`);
-      return;
+      // المسار الافتراضي يبقى Smoke المحلي العديم الأثر تمامًا كما كان؛
+      // لا يفعّل GitHub الحقيقي إلا العلم الصريح --github.
+      if (!args.includes('--github')) {
+        const intent = args.join(' ') || 'demo task';
+        const outcome = await runner.run(intent);
+        console.log(`verdict: ${outcome.verdict}`);
+        console.log(`usage: ${JSON.stringify(outcome.usage.total)}`);
+        console.log(`evidence: ${outcome.verification.evidence.length} item(s)`);
+        return;
+      }
+
+      let approvalSession: ReturnType<typeof createStdinInteractiveApproval> | undefined;
+      try {
+        const plan = buildGithubRunPlan(args);
+        // جلسة تفاعلية فقط عند وجود كتابة مخططة؛ كل كتابة تُعرض وتُسأل عنها منفردة.
+        approvalSession = hasGithubWriteSteps(plan.steps)
+          ? createStdinInteractiveApproval()
+          : undefined;
+        const githubRunner = createGithubRunnerFromEnv(process.env, {
+          onApprovalRequired: approvalSession?.onApprovalRequired,
+        });
+        if (!githubRunner) {
+          console.log('github: NOT CONNECTED — no credential found');
+          console.log('set GH_TOKEN (or GITHUB_TOKEN) in the environment — never commit it — then rerun: celia runner connect');
+          process.exitCode = 1;
+          return;
+        }
+
+        console.log(`github repo: ${plan.owner}/${plan.repo}`);
+        const outcome = await githubRunner.run(plan.intent, { steps: plan.steps });
+        plan.steps.forEach((step, index) => {
+          const result = outcome.results[index];
+          console.log(
+            `${step.action}: ${result?.status ?? 'missing'} ${summarizeGithubOutput(result?.output)}`,
+          );
+        });
+        console.log(`verdict: ${outcome.verdict}`);
+        console.log(`usage: ${JSON.stringify(outcome.usage.total)}`);
+        console.log(`evidence: ${outcome.verification.evidence.length} item(s)`);
+        if (outcome.verdict !== 'PASSED') process.exitCode = 1;
+        return;
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+        return;
+      } finally {
+        approvalSession?.close();
+      }
     }
 
     case 'ledger': {
@@ -122,7 +170,7 @@ async function main(): Promise<void> {
       return;
 
     default:
-      console.log('usage: celia <mode|run|ledger|tools|models|runner connect|health|safe-mode|emergency-lock|ownership prove>');
+      console.log('usage: celia <mode|run [--github [--repo o/r] [--steps JSON]]|ledger|tools|models|runner connect|health|safe-mode|emergency-lock|ownership prove>');
   }
 }
 

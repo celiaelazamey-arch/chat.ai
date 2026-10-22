@@ -3,8 +3,11 @@ import { GITHUB_ACTIONS, type GithubAction } from '@aok/github';
 
 /**
  * تصنيف عمليات GitHub حسب الأثر الجانبي:
- * - قراءات: بلا أثر على المستودع → تلقائية.
- * - كتابات: تُنشئ/تُعدّل حالة على GitHub → موافقة بشرية صريحة إلزامية لكل عملية.
+ * - قراءات: بلا أثر على المستودع → تلقائية افتراضيًا.
+ * - كتابات: تُنشئ/تُعدّل حالة على GitHub → يجب استشارة موافقة لكل عملية على حدة.
+ *   “استشارة الموافقة” هنا تعني استدعاء `onApprovalRequired` قبل أي كتابة؛
+ *   أما كون الإجابة تفاعلًا بشريًا فعليًا فيعتمد على تنفيذ ذلك المعالج
+ *   (الـCLI يقدّم تنفيذًا تفاعليًا، والـE2E الحقيقي يستخدم موافقة مسبقة من المشغّل).
  */
 export const GITHUB_READ_ACTIONS = [
   'github.repo.read',
@@ -29,13 +32,35 @@ void _githubActionCoverage;
 
 /**
  * سياسة موافقة GitHub (مشدّدة):
- * القراءات `auto`، أما إنشاء الفروع وكتابة الملفات والـcommits وإنشاء الـPRs
- * فتتطلب موافقة صريحة عبر `onApprovalRequired` — ولا توجد أي موافقة آلية افتراضية.
+ * القراءات `auto` افتراضيًا، أما إنشاء الفروع وكتابة الملفات والـcommits وإنشاء الـPRs
+ * فتحتاج استشارة `onApprovalRequired` لكل عملية. هذه ليست مجرد قيمة افتراضية:
+ * `enforceGithubApprovalPolicy` أدناه يجعل طبقة قفل الكتابات هي الطبقة الأخيرة دائمًا.
  */
 export const GITHUB_APPROVAL_POLICY: ApprovalPolicy = Object.fromEntries([
   ...GITHUB_READ_ACTIONS.map((action) => [action, 'auto'] as const),
   ...GITHUB_WRITE_ACTIONS.map((action) => [action, 'approval'] as const),
 ]);
+
+/** طبقة القفل غير القابلة للتجاوز من التهيئة العادية: كل كتابة GitHub تتطلب موافقة دائمًا. */
+export const GITHUB_WRITE_POLICY_LOCK: ApprovalPolicy = Object.fromEntries(
+  GITHUB_WRITE_ACTIONS.map((action) => [action, 'approval'] as const),
+);
+
+/**
+ * يُطبّق عقد تكامل GitHub على أي سياسة قادمة من المتصل:
+ * - قد يشدد المتصل القراءات من `auto` إلى `approval` إن أراد.
+ * - لا يستطيع تخفيف أي كتابة إلى `auto`؛ طبقة القفل تُطبق أخيرًا وتتجاهل ذلك التخفيف.
+ *
+ * هذا القفل يحكم قرار “هل الموافقة مطلوبة؟”، ولا يخترع إجابة الموافقة نفسها:
+ * الإجابة تأتي من `onApprovalRequired`، وغيابه/رفضه يعني عدم التنفيذ.
+ */
+export function enforceGithubApprovalPolicy(callerPolicy: ApprovalPolicy = {}): ApprovalPolicy {
+  return {
+    ...GITHUB_APPROVAL_POLICY,
+    ...callerPolicy,
+    ...GITHUB_WRITE_POLICY_LOCK,
+  };
+}
 
 /** المنح الأدنى اللازمة لتشغيل عمليات GitHub لـprincipal واحد (deny له الأسبقية دائمًا في محرك السياسة). */
 export function githubGrantsFor(principal: string) {

@@ -10,9 +10,10 @@ export interface GithubRunnerOptions extends Omit<RunnerOptions, 'github'> {
 
 /**
  * Runner مفعّل فيه GitHub داخل مسار التنفيذ الفعلي:
- * عمليات مسجّلة + منح + سياسة موافقة مشدّدة.
- * الكتابات لا تُنفَّذ إلا إذا قدّم المتصل `onApprovalRequired` وافق صراحة —
- * غيابه يعني الرفض الافتراضي (سلوك LocalRunner القائم).
+ * عمليات مسجّلة + منح + قفل سياسة كتابة صلب لا يمكن تخفيفه عبر `approvalPolicy`.
+ * كل كتابة تستشير `onApprovalRequired` قبل التنفيذ؛ غياب المعالج أو رفضه يعني
+ * عدم التنفيذ. نوع التفاعل (سؤال بشري تفاعلي، موافقة مسبقة، خدمة خارجية…) تحدده
+ * تنفيذات المعالج لدى كل مستهلك، بينما يضمن الـRunner أن الاستشارة لا تُتجاوز.
  */
 export function createGithubRunner(opts: GithubRunnerOptions): LocalRunner {
   const { transport, principal, ...runnerOpts } = opts;

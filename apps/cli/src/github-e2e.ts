@@ -7,8 +7,9 @@ import { createGithubRunner } from './github-runner';
 import { HttpGitHubTransport, type GitHubTransport } from '@aok/github';
 
 /**
- * سياسة موافقة GitHub المشدّدة (قراءات auto، كل الكتابات بموافقة صريحة)
- * تُعرَّف مركزيًا في github-policy.ts وتُعاد إصدارها هنا توافقًا مع المستوردين القدامى.
+ * سياسة موافقة GitHub المشدّدة (قراءات auto افتراضيًا؛ استشارة موافقة إجبارية
+ * لكل كتابة مع قفل ضد تخفيفها بـapprovalPolicy). تُعرَّف مركزيًا في
+ * github-policy.ts وتُعاد إصدارها هنا توافقًا مع المستوردين القدامى.
  */
 export { GITHUB_APPROVAL_POLICY } from './github-policy';
 
@@ -18,8 +19,10 @@ export interface GithubE2EConfig {
   /** Transport بديل مُهيأ مسبقًا (حقن للاختبار دون كشف أي سر). له الأولوية على token. */
   transport?: GitHubTransport;
   /**
-   * موافقة صريحة على عمليات الكتابة (فرع/ملف/commit/PR).
-   * بدونها تُرفض الكتابات كلها وتفشل الـE2E بأمان — لا توجد موافقة آلية افتراضية.
+   * معالج يُستشار منفردًا قبل كل عملية كتابة (فرع/ملف/commit/PR)،
+   * ويعيد قرار القبول أو الرفض لتلك العملية بعينها. بدونه تُرفض الكتابات كلها
+   * وتفشل الـE2E بأمان. كون قرار المعالج صادرًا عن تفاعل بشري فوري أو موافقة
+   * مسبقة موثقة أو سياسة خارجية هو اختيار المتصل؛ لا يوجد افتراض مضمن هنا.
    */
   onApprovalRequired?: (req: ApprovalRequest) => Promise<boolean> | boolean;
   owner: string;
@@ -87,8 +90,9 @@ export async function runGithubE2E(cfg: GithubE2EConfig): Promise<GithubE2EOutco
     throw new Error('runGithubE2E requires cfg.token or cfg.transport');
   }
   const transport = cfg.transport ?? new HttpGitHubTransport('https://api.github.com', cfg.token!);
-  // الربط عبر مسار التنفيذ الرسمي (تسجيل + منح + سياسة مشدّدة) — لا موافقة آلية:
-  // الكتابات تتطلب onApprovalRequired من المتصل وموافقته الصريحة لكل عملية.
+  // الربط عبر مسار التنفيذ الرسمي (تسجيل + منح + قفل سياسة الكتابة):
+  // الـRunner يستدعي onApprovalRequired للمتصل مرة قبل كل كتابة،
+  // بينما مصدر قرار ذلك المعالج يحدده المتصل نفسه.
   const runner = createGithubRunner({ transport, onApprovalRequired: cfg.onApprovalRequired });
 
   const intent = `افحص المستودع ${owner}/${repo} وأنشئ PR يضيف ${cfg.writePath}`;

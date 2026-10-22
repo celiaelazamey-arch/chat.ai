@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { LocalRunner, type ApprovalRequest } from './local-runner';
 import { createGithubRunner, createGithubRunnerFromEnv } from './github-runner';
-import { GITHUB_APPROVAL_POLICY, GITHUB_READ_ACTIONS, GITHUB_WRITE_ACTIONS } from './github-policy';
+import {
+  enforceGithubApprovalPolicy,
+  GITHUB_APPROVAL_POLICY,
+  GITHUB_READ_ACTIONS,
+  GITHUB_WRITE_ACTIONS,
+} from './github-policy';
 import { GITHUB_APPROVAL_POLICY as REEXPORTED_POLICY, runGithubE2E } from './github-e2e';
 import { GITHUB_ACTIONS, GitHubRequestError, type GitHubRequestOptions, type GitHubResponse, type GitHubTransport } from '@aok/github';
 
@@ -81,6 +86,19 @@ describe('GitHub approval policy — reads auto, every write requires explicit a
     for (const action of GITHUB_WRITE_ACTIONS) expect(GITHUB_APPROVAL_POLICY[action], action).toBe('approval');
     expect(REEXPORTED_POLICY).toBe(GITHUB_APPROVAL_POLICY);
   });
+
+  it('applies the write-policy lock last while still honoring stricter reads', () => {
+    const enforced = enforceGithubApprovalPolicy({
+      'github.repo.read': 'approval', // تشديد مسموح
+      'github.repo.branch.create': 'auto', // محاولة تجاوز يجب تجاهلها
+      'github.repo.file.write': 'auto',
+      'github.git.commit': 'auto',
+      'github.pull_request.create': 'auto',
+    });
+
+    expect(enforced['github.repo.read']).toBe('approval');
+    for (const action of GITHUB_WRITE_ACTIONS) expect(enforced[action], action).toBe('approval');
+  });
 });
 
 describe('GitHub wiring into the real execution path (LocalRunner)', () => {
@@ -137,6 +155,74 @@ describe('GitHub wiring into the real execution path (LocalRunner)', () => {
     expect(outcome.results[1]?.output).toEqual({ error: "'github.repo.branch.create' requires approval" });
     expect(outcome.ledger.map((e) => e.type)).toContain('ApprovalDenied');
     expect(fake.writeRequests()).toEqual([]); // لم يعبر أي طلب كتابة إلى الحدود
+  });
+
+  it('cannot be bypassed by a caller approvalPolicy that downgrades writes to auto', async () => {
+    const fake = new FakeGitHub();
+    const onApprovalRequired = vi.fn(async (_req: ApprovalRequest) => false);
+    const runner = createGithubRunner({
+      transport: fake,
+      approvalPolicy: Object.fromEntries(GITHUB_WRITE_ACTIONS.map((action) => [action, 'auto'])),
+      onApprovalRequired,
+    });
+
+    const outcome = await runner.run('attempt a policy bypass', {
+      steps: [
+        {
+          action: 'github.repo.branch.create',
+          input: { owner: 'o', repo: 'r', branch: 'bypass-attempt', from: 'sha-main' },
+        },
+      ],
+    });
+
+    expect(outcome.verdict).toBe('FAILED');
+    expect(onApprovalRequired).toHaveBeenCalledTimes(1); // الاستشارة حدثت رغم محاولة auto
+    expect(onApprovalRequired.mock.calls[0]?.[0]?.action).toBe('github.repo.branch.create');
+    expect(outcome.ledger.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['ApprovalRequired', 'ApprovalDenied']),
+    );
+    expect(fake.writeRequests()).toEqual([]);
+  });
+
+  it('still consults approval for a downgraded write before an approved execution', async () => {
+    const fake = new FakeGitHub();
+    const onApprovalRequired = vi.fn(async (_req: ApprovalRequest) => true);
+    const runner = createGithubRunner({
+      transport: fake,
+      approvalPolicy: { 'github.repo.branch.create': 'auto' },
+      onApprovalRequired,
+    });
+
+    const outcome = await runner.run('approved write after attempted downgrade', {
+      steps: [
+        {
+          action: 'github.repo.branch.create',
+          input: { owner: 'o', repo: 'r', branch: 'approved-branch', from: 'sha-main' },
+        },
+      ],
+    });
+
+    expect(outcome.verdict).toBe('PASSED');
+    expect(onApprovalRequired).toHaveBeenCalledTimes(1);
+    expect(fake.writeRequests()).toHaveLength(1);
+  });
+
+  it('honors a caller policy that makes reads stricter than the default', async () => {
+    const fake = new FakeGitHub();
+    const onApprovalRequired = vi.fn(async (_req: ApprovalRequest) => false);
+    const runner = createGithubRunner({
+      transport: fake,
+      approvalPolicy: { 'github.repo.read': 'approval' },
+      onApprovalRequired,
+    });
+
+    const outcome = await runner.run('strict read', {
+      steps: [{ action: 'github.repo.read', input: { owner: 'o', repo: 'r' } }],
+    });
+
+    expect(outcome.verdict).toBe('FAILED');
+    expect(onApprovalRequired).toHaveBeenCalledTimes(1);
+    expect(fake.requests).toEqual([]);
   });
 
   it('denies only the refused write and executes the explicitly approved ones', async () => {

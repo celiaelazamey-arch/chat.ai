@@ -6,8 +6,10 @@ import { GithubE2EError, runGithubE2E, runRepoTests } from './github-e2e';
  * E2E حقيقي ضد GitHub (M2 — REAL EXTERNAL EXECUTION).
  * يعمل فقط عند الطلب الصريح المزدوج من المشغّل:
  *   CELIA_E2E_REAL=1 + GH_TOKEN + CELIA_E2E_APPROVE_WRITES=1
- * العالم الأخير هو الموافقة البشرية الصريحة على كتابات حقيقية (فرع وملف
- * وcommit وPR بتوقيت فريد) — بدونه لا يبدأ الاختبار أصلًا.
+ * العالم الأخير موافقة مُسبقة يمنحها المشغّل بكاملها قبل بدء التشغيل لكتابات
+ * اختبار حقيقية محددة (فرع وملف وcommit وPR بتوقيت فريد) — بدونه لا يبدأ
+ * الاختبار أصلًا. هو ليس موافقة تفاعلية عند كل عملية أثناء التنفيذ؛
+ * المسار التفاعلي المتاح هو `celia run --github`.
  * (لا يعمل في CI الافتراضي حتى لا ننشئ PRs عشوائية.)
  */
 const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
@@ -61,10 +63,11 @@ describe.skipIf(!enabled)('REAL GitHub E2E (M2)', () => {
       try {
         outcome = await runGithubE2E({
           token: token!,
-          // الموافقة هنا ليست افتراضية: الاختبار نفسه لا يعمل إلا إذا ضبط المشغّل
-          // CELIA_E2E_APPROVE_WRITES=1 صراحة، وكل موافقة تُسجَّل قبل منحها.
+          // تنفيذ الموافقة المسبقة: كل طلب كتابة يصل هنا على حدة ويُسجَّل،
+          // ثم يُرد عليه نعم دون مطالبة جديدة بالمشغّل — لأن المشغّل ضبط
+          // CELIA_E2E_APPROVE_WRITES=1 مسبقًا لهذا الاختبار المحدد.
           onApprovalRequired: async (req) => {
-            console.warn(`[real-e2e] operator-approved write: ${req.action} (${req.reason})`);
+            console.warn(`[real-e2e] operator-preapproved write: ${req.action} (${req.reason})`);
             return true;
           },
           owner: process.env.CELIA_E2E_OWNER ?? 'elazamey',

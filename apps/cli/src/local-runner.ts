@@ -31,7 +31,7 @@ import { InMemoryVault } from '@aok/vault';
 import { NoopBillingAdapter } from '@aok/billing';
 import { ImmuneRuntime, type Principal } from '@aok/immune';
 import { GitHubPlugin, type GitHubTransport } from '@aok/github';
-import { GITHUB_APPROVAL_POLICY, githubGrantsFor } from './github-policy';
+import { enforceGithubApprovalPolicy, githubGrantsFor } from './github-policy';
 
 /** وضع التشغيل (ECONOMIC PRINCIPLE 002/004): local = أولوية، cloud = تبديل adapters فقط. */
 export type RunMode = 'local' | 'cloud';
@@ -69,7 +69,8 @@ export interface RunnerOptions {
   approvalPolicy?: ApprovalPolicy;
   /**
    * عند تقديمه: تُسجَّل عمليات GitHub السبع في سجل المنفّذين، وتُمنح للـprincipal
-   * بسياسة GITHUB_APPROVAL_POLICY المشدّدة (قراءات تلقائية، كتابات بموافقة صريحة).
+   * بعقد سياسة غير قابل للتخفيف عبر `approvalPolicy` العادية: القراءات تلقائية
+   * افتراضيًا (ويمكن تشديدها)، والكتابات الأربع تستشير الموافقة لكل عملية دائمًا.
    * بدونه يبقى الـRunner كما كان: deny-by-default بلا أي منفّذ GitHub.
    */
   github?: GithubIntegrationOptions;
@@ -198,14 +199,14 @@ export class LocalRunner {
     this.mode = opts.mode ?? modeFromEnv();
     this.quota = new BudgetQuota(opts.budget ?? FREE_BUDGET);
     if (opts.github) {
-      // ربط GitHub المتكامل: منح أدنى للقدرات السبع + سياسة موافقة مشدّدة،
-      // مع أولوية أي سياسة يقدّمها المتصل صراحة فوق الافتراضي.
+      // ربط GitHub المتكامل: منح أدنى للقدرات السبع + قفل سياسة كتابة صلب.
+      // تُعرض سياسة المتصل للتشديد فقط؛ `enforceGithubApprovalPolicy` يطبق
+      // طبقة `approval` للكتابات أخيرًا، فلا يستطيع جعل كتابة `auto`.
       const grants = [...(opts.grants ?? []), ...githubGrantsFor(opts.github.principal ?? 'coder')];
-      const approvalPolicy = {
+      const approvalPolicy = enforceGithubApprovalPolicy({
         ...DEFAULT_APPROVAL_POLICY,
-        ...GITHUB_APPROVAL_POLICY,
         ...(opts.approvalPolicy ?? {}),
-      };
+      });
       this.policy = new PolicyEngine(grants, approvalPolicy);
     } else {
       this.policy = new PolicyEngine(opts.grants ?? [], opts.approvalPolicy ?? DEFAULT_APPROVAL_POLICY);

@@ -8,6 +8,7 @@ import { createLocalSmokeRunner, LocalRunner } from './local-runner';
 import { buildOwnershipProof } from './ownership-prove';
 import { createGithubRunnerFromEnv } from './github-runner';
 import {
+  assertInteractiveTerminalForGithubWrites,
   buildGithubRunPlan,
   createStdinInteractiveApproval,
   hasGithubWriteSteps,
@@ -80,6 +81,8 @@ async function main(): Promise<void> {
       let approvalSession: ReturnType<typeof createStdinInteractiveApproval> | undefined;
       try {
         const plan = buildGithubRunPlan(args);
+        // فحص TTY عند هذا الحد فقط، قبل إنشاء معالج الموافقة أو Runner أو أي Transport.
+        assertInteractiveTerminalForGithubWrites(plan.steps, process.stdin.isTTY === true);
         // جلسة تفاعلية فقط عند وجود كتابة مخططة؛ كل كتابة تُعرض وتُسأل عنها منفردة.
         approvalSession = hasGithubWriteSteps(plan.steps)
           ? createStdinInteractiveApproval()

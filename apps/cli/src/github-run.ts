@@ -115,6 +115,21 @@ export function hasGithubWriteSteps(steps: readonly RunStep[]): boolean {
   return steps.some((step) => GITHUB_WRITE_SET.has(step.action));
 }
 
+/**
+ * بوابة CLI فقط: خطوات الكتابة التفاعلية لا تُقبل من pipe أو أي stdin غير طرفي.
+ * تُستدعى قبل إنشاء جلسة الموافقة أو Runner، ولا تؤثر في خطط القراءة فقط.
+ */
+export function assertInteractiveTerminalForGithubWrites(
+  steps: readonly RunStep[],
+  stdinIsTTY: boolean,
+): void {
+  if (hasGithubWriteSteps(steps) && !stdinIsTTY) {
+    throw new Error(
+      'GitHub writes require an interactive terminal (TTY); non-interactive stdin is not accepted',
+    );
+  }
+}
+
 export type ApprovalAsk = (prompt: string) => Promise<string>;
 
 /**

@@ -1,8 +1,11 @@
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, it, expect, vi } from 'vitest';
 import type { GitHubRequestOptions, GitHubResponse, GitHubTransport } from '@aok/github';
 import { createGithubRunner } from './github-runner';
 import {
+  assertInteractiveTerminalForGithubWrites,
   buildGithubRunPlan,
   createInteractiveApproval,
   createStdinInteractiveApproval,
@@ -155,8 +158,68 @@ describe('celia run --github plan through the real LocalRunner path', () => {
     expect(transport.requests.some((request) => request.method === 'POST')).toBe(false);
   });
 
-  it('executes the planned write only after an affirmative interactive answer', async () => {
+  it('rejects a planned write without a TTY before creating/using any GitHub transport path', () => {
     const plan = buildGithubRunPlan(argv, {});
+    const transport = new MiniGitHub();
+
+    expect(() => assertInteractiveTerminalForGithubWrites(plan.steps, false)).toThrow(
+      'GitHub writes require an interactive terminal (TTY)',
+    );
+    expect(transport.requests).toEqual([]);
+  });
+
+  it('exits 1 at the actual CLI process boundary when stdin is a pipe, even with y queued', () => {
+    const result = spawnSync(
+      join(process.cwd(), 'node_modules', '.bin', 'tsx'),
+      ['apps/cli/src/cli.ts', 'run', ...argv],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        input: 'y\n',
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          GH_TOKEN: 'dummy-token-must-not-be-reached',
+          GITHUB_TOKEN: '',
+        },
+      },
+    );
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+
+    expect(result.status).toBe(1);
+    expect(output).toContain('GitHub writes require an interactive terminal (TTY)');
+    // يُطبع هذا السطر فقط بعد إنشاء Runner؛ غيابه يؤكد الرفض قبل مسار التنفيذ وTransport.
+    expect(output).not.toContain('github.repo.read:');
+  }, 35_000);
+
+  it('allows and executes a read-only plan without a TTY', async () => {
+    const plan = buildGithubRunPlan(
+      [
+        '--github',
+        '--repo',
+        'o/r',
+        '--steps',
+        JSON.stringify([{ action: 'github.repo.read', input: { owner: 'o', repo: 'r' } }]),
+        'read only',
+      ],
+      {},
+    );
+    const transport = new MiniGitHub();
+    assertInteractiveTerminalForGithubWrites(plan.steps, false);
+    const runner = createGithubRunner({ transport });
+
+    const outcome = await runner.run(plan.intent, { steps: plan.steps });
+
+    expect(outcome.verdict).toBe('PASSED');
+    expect(transport.requests).toEqual([
+      { method: 'GET', path: '/repos/o/r' },
+      { method: 'GET', path: '/repos/o/r/git/ref/heads/main' },
+    ]);
+  });
+
+  it('executes the planned write with a simulated TTY only after an affirmative answer', async () => {
+    const plan = buildGithubRunPlan(argv, {});
+    assertInteractiveTerminalForGithubWrites(plan.steps, true);
     const transport = new MiniGitHub();
     const ask = vi.fn(async (_prompt: string) => 'y');
     const runner = createGithubRunner({

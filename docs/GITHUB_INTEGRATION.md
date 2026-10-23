@@ -10,7 +10,7 @@ This document records how it works, how to operate it, and the verification evid
 ## 1. Verify the connection (real, secret-safe)
 
 ```bash
-export GH_TOKEN=…            # or GITHUB_TOKEN — environment only, never commit
+read -s GH_TOKEN && export GH_TOKEN
 pnpm exec tsx apps/cli/src/cli.ts runner connect [owner/repo] [--json]
 ```
 
@@ -60,8 +60,17 @@ celia run --github --repo owner/repo \
 Without `--steps`, the plan is read-only (`github.repo.read` + README
 `github.repo.file.read`). With `--steps`, every action still goes through the
 grant/policy/schema/immune execution path. If any planned action writes, the CLI
-asks **separately before each write** on stderr (`[y/N]`); empty input, EOF, or
-any answer other than `y`/`yes` denies that write. There is no `--yes` option.
+requires stdin to be an interactive terminal (`process.stdin.isTTY === true`)
+before it creates an approval handler, runner, or GitHub transport. A write plan
+started from a pipe or other non-TTY stdin is rejected immediately with exit 1;
+there is currently no non-interactive pre-approval mode for `celia run --github`.
+In a TTY, the CLI asks **separately before each write** on stderr (`[y/N]`);
+empty input, EOF, or any answer other than `y`/`yes` denies that write. There is
+no `--yes` option.
+
+> `isTTY` is a channel guard, not proof that a human approved: PTY/expect-style
+> automation can emulate a terminal. It prevents ordinary pipes/scripts from
+> silently feeding `y`, but it is not an identity or out-of-band consent check.
 
 ## 3. Approval policy (reads auto by default, writes approval-locked)
 
@@ -78,8 +87,9 @@ downgrade a write to `auto` (regression-tested through `LocalRunner`).
 This guarantee is precise in scope: the runner always *requests* an approval
 decision before each write and blocks when the answer is absent or negative. The
 source of a positive answer is the caller's handler. The built-in
-`celia run --github` handler is interactive per write; the real E2E handler uses
-operator pre-approval (see §4). There is no default answer in the runner itself.
+`celia run --github` handler is interactive per write and is constructed only for
+a TTY stdin; the real E2E handler uses operator pre-approval (see §4). There is
+no default answer in the runner itself.
 
 ## 4. Real E2E (operator-gated)
 
@@ -103,20 +113,28 @@ Reports are written to `.e2e-artifacts/` (git-ignored).
 
 | Check | Result |
 | --- | --- |
-| Offline suite (full) | **334 passed · 1 skipped** (Node 24) — baseline before the GitHub work: 283 passed on Node 20, 3 files unloadable there due to `node:sqlite` (environment, pre-existing) |
-| GitHub-focused tests | 33 across `github-connect.test.ts`, `github-integration.test.ts`, and `github-run.test.ts`, including secret non-leakage, "no write reaches the transport without approval", caller-`auto` downgrade regression tests, and ordinary `celia run --github` plan/interactive-approval cases |
+| Offline suite (full) | **337 passed · 1 skipped** (Node 24) — baseline before the GitHub work: 283 passed on Node 20, 3 files unloadable there due to `node:sqlite` (environment, pre-existing) |
+| GitHub-focused tests | 36 across `github-connect.test.ts`, `github-integration.test.ts`, and `github-run.test.ts`, including secret non-leakage, "no write reaches the transport without approval", caller-`auto` downgrade regression tests, ordinary `celia run --github` plan/interactive-approval cases, and CLI process-boundary TTY-gate cases |
 | Typecheck | `pnpm -r run typecheck` clean |
 | Live connect | `runner connect elazamey/chat.ai` → connected as `celiaelazamey-arch`, `pull=true push=false admin=false`, exit 0 (token never printed) |
-| Live ordinary CLI | `celia run` without `--github` still returns the original smoke result (3 fake tool results, no GitHub API). `celia run --github --repo celiaelazamey-arch/chat.ai` performed real repo + README reads and PASSED. In separate disposable-branch checks against the fork, stdin EOF denied creation (the ref remained 404), while a stdin `y` supplied by the validation pipeline created the branch at `cde0fd77`; it was deleted immediately and confirmed 404. These prove the prompt/deny/approve code path with operator-supplied stdin, not an unattended auto-approval |
+| Live ordinary CLI | `celia run` without `--github` still returns the original smoke result (3 fake tool results, no GitHub API). `celia run --github --repo celiaelazamey-arch/chat.ai` performed real repo + README reads from non-TTY stdin and PASSED. After the TTY gate, a live disposable-branch write supplied `y` through a pipe was rejected before execution with exit 1, and the proposed branch remained absent. Earlier pre-gate validation had also exercised the prompt/deny/approve path with a disposable branch that was deleted; that history does not change the current non-TTY denial. The TTY-approved write branch of the current code is covered by unit tests using a simulated TTY flag and injected approval answer, not by a claim of a new physical-terminal session in this log |
 | Live E2E | **PASSED** against `celiaelazamey-arch/chat.ai` (fork; the authorized account is read-only on upstream): branch `e2e/m2-1792710656212`, PR [celiaelazamey-arch/chat.ai#1](https://github.com/celiaelazamey-arch/chat.ai/pull/1), commit `0dbe8915`, ledger chain valid, Merkle root `303eadc7…a6e58`, all 7 verification checks PASSED. Exactly 4 per-write approval requests/grants were ledgered and answered under the operator's up-front `CELIA_E2E_APPROVE_WRITES=1` pre-approval — not through interactive prompts |
 | Integration PR | [elazamey/chat.ai#19](https://github.com/elazamey/chat.ai/pull/19) from `celiaelazamey-arch:feat/github-integration` (cross-fork, `main` untouched) |
 
-## 6. Known remaining limitation
+## 6. Most significant known remaining limitation: grant scope `*`
 
-GitHub grants use scope `*` because `LocalRunner` evaluates policy per capability,
-not per resource. Pinning grants to `repo:owner/name` requires deriving the scope
-from each step's input during policy evaluation — proposed follow-up, out of scope
-for this task.
+**Risk: high relative to the rest of this integration.** GitHub grants use scope
+`*` because `LocalRunner` evaluates policy per capability, not per resource. Once
+a write is approved, the runner's grant layer does not itself confine that action
+to one repository; the effective repository boundary is whatever the supplied
+credential can access, subject to the step input and GitHub's own authorization.
+
+The proposed code fix is per-repository grants: derive `repo:owner/name` from each
+step's validated input during policy and immune evaluation, issue grants only for
+the intended repository, and regression-test that an approved operation for one
+repository cannot be redirected to another. Until that follow-up lands, use a
+fine-grained credential restricted to the single intended repository and the
+minimum required permissions as the compensating control.
 
 To run the real E2E directly against `elazamey/chat.ai`, use a credential whose
 account has `push` there (owner account or a `Write` collaborator); no code changes

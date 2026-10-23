@@ -13,7 +13,8 @@ COPY storage ./storage
 COPY tests ./tests
 RUN pnpm install --frozen-lockfile
 
-# Stage 2: Run the HTTP API as a non-root user
+# Stage 2: Run the HTTP API by default as a non-root user. The entrypoint
+# also routes Celia CLI subcommands (health, run, ...) used by smoke tests.
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV CELIA_MODE=local
@@ -28,6 +29,9 @@ COPY --chown=node:node --from=builder /app/plugins ./plugins
 COPY --chown=node:node --from=builder /app/adapters ./adapters
 COPY --chown=node:node --from=builder /app/storage ./storage
 COPY --chown=node:node --from=builder /app/tests ./tests
+COPY --chown=node:node scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+RUN chmod 0755 ./scripts/docker-entrypoint.sh
 
 USER node
-CMD ["pnpm", "exec", "tsx", "apps/api/src/start.ts"]
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
+CMD ["api"]

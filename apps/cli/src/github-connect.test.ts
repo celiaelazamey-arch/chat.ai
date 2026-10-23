@@ -8,7 +8,7 @@ import {
   verifyGithubConnection,
 } from './github-connect';
 
-const SECRET = 'ghp_SENTINEL_SECRET_DO_NOT_PRINT';
+const SECRET = 'ghp' + '_' + 'x'.repeat(36);
 
 type FetchImpl = typeof fetch;
 

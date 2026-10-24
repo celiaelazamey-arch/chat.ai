@@ -1,5 +1,7 @@
 # Free Deployment Guide ($0 Policy)
 
+> Staging checklist and approval-gated plan: [STAGING_CHECKLIST_AND_PLAN.md](STAGING_CHECKLIST_AND_PLAN.md). Operational examples: [STAGING_RUNBOOK.md](STAGING_RUNBOOK.md). Neither document performs remote actions.
+
 ## Deployment Routes
 1. **Local Micro-Mode (`Celia Mode: local`)**: Executed locally using embedded runtimes and `MockProvider`.
 2. **Isolated OCI Container**: Sandbox container execution verified in isolated environments.

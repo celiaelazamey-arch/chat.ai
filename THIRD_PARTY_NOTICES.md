@@ -23,6 +23,7 @@ BLOCKED     ← ممنوع (GPL-copyleft قسري في نواة مغلقة ال�
 | @types/node | MIT | ALLOWED | أنواع Node (dev) |
 | typescript | Apache-2.0 | ALLOWED | المترجم (dev) |
 | vitest | MIT | ALLOWED | الاختبارات (dev) |
+| @vitest/coverage-v8 | MIT | ALLOWED | قياس تغطية الاختبارات (dev) |
 | yaml | ISC | ALLOWED | قراءة PROJECT_IDENTITY.yaml |
 | tsx | MIT | ALLOWED | تشغيل CLI (dev) |
 | esbuild | MIT | ALLOWED | تبعية غير مباشرة (dev) |
@@ -30,6 +31,8 @@ BLOCKED     ← ممنوع (GPL-copyleft قسري في نواة مغلقة ال�
 | react-dom | MIT | ALLOWED | واجهة React — `apps/console` |
 | @types/react | MIT | ALLOWED | أنواع React (dev، `apps/console`) |
 | @types/react-dom | MIT | ALLOWED | أنواع react-dom (dev، `apps/console`) |
+| @testing-library/react | MIT | ALLOWED | اختبارات تفاعل مكونات React (dev، `apps/console`) |
+| jsdom | MIT | ALLOWED | بيئة DOM لاختبارات React (dev، `apps/console`) |
 | @vitejs/plugin-react | MIT | ALLOWED | ملحق Vite لـ React (dev، `apps/console`) |
 | @cloudflare/workers-types | MIT | ALLOWED | أنواع Cloudflare Workers (dev، `apps/worker`) |
 | wrangler | MIT | ALLOWED | أداة نشر Cloudflare Workers/Pages (dev، `apps/worker`) |

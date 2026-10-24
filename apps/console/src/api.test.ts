@@ -65,7 +65,7 @@ describe('runTask', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(listRuns('task-42', 10)).resolves.toEqual([]);
-    expect(fetchMock).toHaveBeenCalledWith('/runs?limit=10&task_id=task-42');
+    expect(fetchMock).toHaveBeenCalledWith('/runs?limit=10&task_id=task-42', { credentials: 'include' });
   });
 
   it('returns an empty filtered run list without inventing results', async () => {

@@ -13,6 +13,7 @@ Intent → Task → Plan → Policy → Execution → Evidence → Verification 
 - 📄 **[ATOMIC_KERNEL_CONTRACT.md](docs/ATOMIC_KERNEL_CONTRACT.md)** — عقد النواة الذرية (interfaces + قواعد التبعية).
 - 💰 **[ZERO_COST_ECONOMIC_CONTRACT.md](docs/ZERO_COST_ECONOMIC_CONTRACT.md)** — العقد الاقتصادي (Free Core + BYOK + Runner + Metering/Quota).
 - 🔐 **[SECURITY_CONTRACT.md](docs/SECURITY_CONTRACT.md)** — العقد الأمني (Capability-based + Sandbox + Vault).
+- 🔑 **[WORKER_ACCESS_SETUP.md](docs/security/WORKER_ACCESS_SETUP.md)** — إعداد Cloudflare Access وهوية المستخدم وعزل تشغيلات D1 لطبقة Worker.
 - 👑 **[OWNERSHIP_CONTRACT.md](docs/OWNERSHIP_CONTRACT.md)** — عقد الملكية (Digital Ownership Layer).
 - 🧾 **[PROVENANCE_CONTRACT.md](docs/PROVENANCE_CONTRACT.md)** — عقد المصدر (genesis hash + proof bundle).
 - 🛡️ **[IMMUNE_SYSTEM_CONTRACT.md](docs/IMMUNE_SYSTEM_CONTRACT.md)** — عقد الجهاز المناعي (Detect/Decide/Isolate/Recover/Verify/Learn).

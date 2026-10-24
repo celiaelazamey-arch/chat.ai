@@ -52,6 +52,7 @@ export async function runTask(task: string): Promise<ApiRunResponse> {
   try {
     response = await fetch(`${API_BASE_URL}/run`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ task }),
     });
@@ -80,7 +81,7 @@ export async function runTask(task: string): Promise<ApiRunResponse> {
 export async function listTasks(limit = 25): Promise<ApiTaskSummary[]> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/tasks?limit=${encodeURIComponent(String(limit))}`);
+    response = await fetch(`${API_BASE_URL}/tasks?limit=${encodeURIComponent(String(limit))}`, { credentials: 'include' });
   } catch {
     throw new RunRequestError('تعذر الوصول إلى سجل المهام.', 'network');
   }
@@ -110,7 +111,7 @@ export async function listRuns(taskId: string, limit = 25): Promise<ApiRunSummar
   const query = new URLSearchParams({ limit: String(limit), task_id: taskId });
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/runs?${query.toString()}`);
+    response = await fetch(`${API_BASE_URL}/runs?${query.toString()}`, { credentials: 'include' });
   } catch {
     throw new RunRequestError('تعذر الوصول إلى سجل التشغيلات.', 'network');
   }
@@ -139,7 +140,7 @@ export async function listRuns(taskId: string, limit = 25): Promise<ApiRunSummar
 export async function getRun(runId: string): Promise<ApiRunDetails> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/runs/${encodeURIComponent(runId)}`);
+    response = await fetch(`${API_BASE_URL}/runs/${encodeURIComponent(runId)}`, { credentials: 'include' });
   } catch {
     throw new RunRequestError('تعذر الوصول إلى تفاصيل التشغيل.', 'network');
   }

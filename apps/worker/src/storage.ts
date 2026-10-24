@@ -22,15 +22,53 @@ export function pageSize(value: string | null): number {
   return Math.min(parsed, MAX_PAGE_SIZE);
 }
 
-export async function saveRun(db: D1Database, outcome: ProofCarryingOutcome, now = new Date().toISOString()): Promise<void> {
+export interface RateLimitDecision {
+  allowed: boolean;
+  retryAfter: number;
+}
+
+/** Atomic fixed-window counter shared across Worker instances via D1. */
+export async function consumeFixedWindow(
+  db: D1Database,
+  bucketKey: string,
+  limit: number,
+  windowSeconds: number,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<RateLimitDecision> {
+  const windowStart = Math.floor(nowSeconds / windowSeconds) * windowSeconds;
+  const row = await db.prepare(`
+    INSERT INTO request_limits (bucket_key, window_start, request_count)
+    VALUES (?, ?, 1)
+    ON CONFLICT(bucket_key) DO UPDATE SET
+      request_count = CASE
+        WHEN request_limits.window_start = excluded.window_start THEN request_limits.request_count + 1
+        ELSE 1
+      END,
+      window_start = excluded.window_start
+    WHERE request_limits.window_start != excluded.window_start OR request_limits.request_count < ?
+    RETURNING request_count
+  `).bind(bucketKey, windowStart, limit).first<{ request_count: number }>();
+
+  return row
+    ? { allowed: true, retryAfter: 0 }
+    : { allowed: false, retryAfter: Math.max(1, windowStart + windowSeconds - nowSeconds) };
+}
+
+export async function saveRun(
+  db: D1Database,
+  outcome: ProofCarryingOutcome,
+  ownerId: string,
+  now = new Date().toISOString(),
+): Promise<void> {
   await db.prepare(`
     INSERT INTO runs (
-      run_id, task_id, task, mode, verdict, results_json,
+      run_id, task_id, owner_id, task, mode, verdict, results_json,
       verification_json, usage_json, evidence_json, created_at, completed_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     outcome.runId,
     outcome.taskId,
+    ownerId,
     outcome.intent,
     outcome.mode,
     outcome.verdict,
@@ -43,50 +81,61 @@ export async function saveRun(db: D1Database, outcome: ProofCarryingOutcome, now
   ).run();
 }
 
-export async function getRun(db: D1Database, runId: string): Promise<RunRecord | null> {
+export async function getRun(db: D1Database, runId: string, ownerId: string): Promise<RunRecord | null> {
   const row = await db.prepare(`
     SELECT run_id, task_id, task, mode, verdict, results_json,
       verification_json, usage_json, evidence_json, created_at, completed_at
     FROM runs
-    WHERE run_id = ?
+    WHERE run_id = ? AND owner_id = ?
     LIMIT 1
-  `).bind(runId).first<Record<string, string>>();
+  `).bind(runId, ownerId).first<Record<string, string>>();
   return row ? deserialize(row) : null;
 }
 
-export async function listRuns(db: D1Database, limit: number): Promise<RunRecord[]> {
-  return listRunsByTask(db, limit);
+export async function listRuns(db: D1Database, limit: number, ownerId: string): Promise<RunRecord[]> {
+  return listRunsByTask(db, limit, undefined, ownerId);
 }
 
-export async function listRunsByTask(db: D1Database, limit: number, taskId?: string): Promise<RunRecord[]> {
+export async function listRunsByTask(
+  db: D1Database,
+  limit: number,
+  taskId: string | undefined,
+  ownerId: string,
+): Promise<RunRecord[]> {
   const query = taskId ? `
     SELECT run_id, task_id, task, mode, verdict, results_json,
       verification_json, usage_json, evidence_json, created_at, completed_at
     FROM runs
-    WHERE task_id = ?
+    WHERE task_id = ? AND owner_id = ?
     ORDER BY created_at DESC
     LIMIT ?
   ` : `
     SELECT run_id, task_id, task, mode, verdict, results_json,
       verification_json, usage_json, evidence_json, created_at, completed_at
     FROM runs
+    WHERE owner_id = ?
     ORDER BY created_at DESC
     LIMIT ?
   `;
   const statement = db.prepare(query);
   const result = taskId
-    ? await statement.bind(taskId, limit).all<Record<string, string>>()
-    : await statement.bind(limit).all<Record<string, string>>();
+    ? await statement.bind(taskId, ownerId, limit).all<Record<string, string>>()
+    : await statement.bind(ownerId, limit).all<Record<string, string>>();
   return result.results.map(deserialize);
 }
 
-export async function listTasks(db: D1Database, limit: number): Promise<Array<Pick<RunRecord, 'task_id' | 'task' | 'verdict' | 'created_at' | 'completed_at'>>> {
+export async function listTasks(
+  db: D1Database,
+  limit: number,
+  ownerId: string,
+): Promise<Array<Pick<RunRecord, 'task_id' | 'task' | 'verdict' | 'created_at' | 'completed_at'>>> {
   const result = await db.prepare(`
     SELECT task_id, task, verdict, created_at, completed_at
     FROM runs
+    WHERE owner_id = ?
     ORDER BY created_at DESC
     LIMIT ?
-  `).bind(limit).all<Pick<RunRecord, 'task_id' | 'task' | 'verdict' | 'created_at' | 'completed_at'>>();
+  `).bind(ownerId, limit).all<Pick<RunRecord, 'task_id' | 'task' | 'verdict' | 'created_at' | 'completed_at'>>();
   return result.results;
 }
 

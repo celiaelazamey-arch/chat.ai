@@ -1,6 +1,10 @@
 # dependencies
 node_modules/
 
+# Cloudflare local state and secrets
+**/.wrangler/
+**/.dev.vars*
+
 # build output
 dist/
 build/

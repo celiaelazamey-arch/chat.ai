@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a scoped improvement to Celia/AOK
+title: "feature: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets or private data. An issue is a request for triage, not authorization to execute changes or grant external permissions.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Who is affected, and what is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe user-visible behavior, not only an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List measurable conditions for completion.
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and constraints
+      description: Mention affected areas, exclusions, compatibility, and security considerations.
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests or evidence required
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Expected risk
+      options:
+        - Low — docs or isolated behavior
+        - Medium — API or multi-package behavior
+        - High — credentials, permissions, data, deployment, or external side effects
+    validations:
+      required: true

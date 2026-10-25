@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { GithubE2EError, runGithubE2E, runRepoTests } from './github-e2e';
+import { explicitGithubE2ETarget } from './github-e2e-config';
 
 /**
  * E2E حقيقي ضد GitHub (M2 — REAL EXTERNAL EXECUTION).
@@ -8,7 +9,10 @@ import { GithubE2EError, runGithubE2E, runRepoTests } from './github-e2e';
  * (لا يعمل في CI الافتراضي حتى لا ننشئ PRs عشوائية.)
  */
 const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
-const enabled = Boolean(token) && process.env.CELIA_E2E_REAL === '1';
+const realRunRequested = process.env.CELIA_E2E_REAL === '1';
+const target = explicitGithubE2ETarget(process.env.CELIA_E2E_OWNER, process.env.CELIA_E2E_REPO);
+const enabled = Boolean(token) && realRunRequested && Boolean(target);
+const missingTargetWithRealCredentials = Boolean(token) && realRunRequested && !target;
 const reportDir = process.env.CELIA_E2E_REPORT_DIR ?? '.e2e-artifacts';
 
 function writeReport(outcome: Awaited<ReturnType<typeof runGithubE2E>>): void {
@@ -48,6 +52,12 @@ function failureReport(error: unknown): Awaited<ReturnType<typeof runGithubE2E>>
   };
 }
 
+describe.skipIf(!missingTargetWithRealCredentials)('REAL GitHub E2E safety configuration', () => {
+  it('requires explicit CELIA_E2E_OWNER and CELIA_E2E_REPO; no repository defaults are allowed', () => {
+    throw new Error('Set CELIA_E2E_OWNER and CELIA_E2E_REPO explicitly before enabling real GitHub E2E.');
+  });
+});
+
 describe.skipIf(!enabled)('REAL GitHub E2E (M2)', () => {
   it(
     'inspects the repo, opens a PR changing a specific file, and verifies with evidence',
@@ -57,8 +67,8 @@ describe.skipIf(!enabled)('REAL GitHub E2E (M2)', () => {
       try {
         outcome = await runGithubE2E({
           token: token!,
-          owner: process.env.CELIA_E2E_OWNER ?? 'elazamey',
-          repo: process.env.CELIA_E2E_REPO ?? 'chat.ai',
+          owner: target!.owner,
+          repo: target!.repo,
           branch: `e2e/m2-${stamp}`,
           readPath: 'README.md',
           writePath: `docs/e2e/M2-${stamp}.md`,

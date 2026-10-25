@@ -4,35 +4,63 @@ on:
   workflow_dispatch:
     inputs:
       owner:
-        description: GitHub repository owner
+        description: Explicit owner of the dedicated disposable E2E test repository
         required: true
-        default: elazamey
+        type: string
       repo:
-        description: GitHub repository name
+        description: Explicit name of the dedicated disposable E2E test repository
         required: true
-        default: chat.ai
+        type: string
 
+# The workflow's GITHUB_TOKEN never needs to write repository contents. The
+# separate E2E_GH_TOKEN is constrained by CELIA_E2E_ALLOWED_REPOSITORY below.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+# Never overlap real writes to the same disposable repository.
+concurrency:
+  group: real-github-e2e-${{ inputs.owner }}-${{ inputs.repo }}
+  cancel-in-progress: false
 
 jobs:
   real-e2e:
     name: "Real GitHub E2E"
+    # Configure this Environment in GitHub Settings with required reviewers,
+    # main-only deployment branches, and environment-scoped secrets (not repo secrets).
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment:
+      name: github-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
+
+      - name: Validate dedicated E2E target
+        env:
+          TARGET_OWNER: ${{ inputs.owner }}
+          TARGET_REPO: ${{ inputs.repo }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          ALLOWED_REPOSITORY: ${{ secrets.CELIA_E2E_ALLOWED_REPOSITORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${TARGET_OWNER,,}/${TARGET_REPO,,}"
+          source="${SOURCE_REPOSITORY,,}"
+          allowed="${ALLOWED_REPOSITORY,,}"
+          if [[ -z "$ALLOWED_REPOSITORY" || "$target" != "$allowed" || "$target" == "$source" ]]; then
+            echo "Refusing E2E target '$target': it must match the configured dedicated repository allowlist and differ from the source repository." >&2
+            exit 1
+          fi
 
       - name: Run real E2E
         env:
@@ -45,7 +73,7 @@ jobs:
 
       - name: Publish E2E report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: real-github-e2e-report
           path: e2e-artifacts/

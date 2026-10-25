@@ -126,7 +126,8 @@
 
 - [ ] أنشئ/اختر مستودع اختبار مخصصًا منفصلًا عن مستودعات الإنتاج، وراجع قواعد الحماية وسياسة PRs والتنظيف.
 - [ ] استخدم GitHub token محدودًا لهذا المستودع وبالصلاحيات الدنيا اللازمة للقراءة/كتابة الملفات وإنشاء Pull Requests؛ ضعه في secret store محمي مؤقتًا.
-- [ ] الاختبار الحالي يستخدم افتراضيًا owner/repo احتياطيين إذا لم تُضبط المتغيرات؛ لذلك **يجب ضبط `CELIA_E2E_OWNER` و`CELIA_E2E_REPO` صراحةً** والتحقق منهما قبل التشغيل، وعدم الاعتماد على القيم الافتراضية.
+- [x] حاجز CLI واختباراته يرفضان غياب `CELIA_E2E_OWNER` و`CELIA_E2E_REPO`؛ حُذفت defaults من workflow وأضيف تحقق يطابق الهدف تمامًا مع `CELIA_E2E_ALLOWED_REPOSITORY`.
+- [ ] إعداد GitHub Environment باسم `github-e2e` مع required reviewers وتقييد deployment إلى `main`؛ ضع `CELIA_E2E_ALLOWED_REPOSITORY` و`E2E_GH_TOKEN` كـenvironment secrets لمستودع اختبار مخصص (ليس repository secrets)، ثم شغّل E2E الحقيقي بموافقة صريحة. لم تُنفذ إعدادات GitHub الحية أو التشغيل.
 - [ ] لا تشغل الاختبار إلا بموافقة صريحة لأن نتيجته أثر حقيقي: فرع، commit، ملف، وPull Request. اضبط `CELIA_E2E_REAL=1` و`GH_TOKEN` (أو `GITHUB_TOKEN`) في بيئة التشغيل المحمية و`CELIA_E2E_REPORT_DIR` إلى مسار artifacts غير ملتزم بـGit.
 - [ ] نفّذ الاختبار منفصلًا عن نشر Worker؛ النتيجة تثبت CLI GitHub adapter فقط، ولا تثبت أن Worker `/run` ينفذ GitHub.
 - [ ] تحقق من verdict، وchain validity، والـPR والـcommit والأدلة، ثم أغلق/احذف موارد الاختبار وفق سياسة المستودع وموافقة المالك. لا تحفظ token أو بيانات خاصة في التقرير.

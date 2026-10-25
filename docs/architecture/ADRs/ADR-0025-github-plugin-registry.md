@@ -12,7 +12,8 @@
 - **Namespace + Schema Registry**: `kernel/registry` (`@aok/registry`) + `kernel/contracts/src/naming.ts`.
   - اتفاقية التسمية `namespace.action` (lowercase، قسمان+، namespaces محجوزة: admin/kernel/root/system/…).
   - لا تنفيذ لقدرة غير مسجّلة؛ `admin.superpower` مرفوض.
-- **7 عمليات فقط**: repo.read · branch.create · file.read · file.write · git.commit · pr.create · pr.read.
+- **العمليات الأساسية الأصلية**: repo.read · branch.create · file.read · file.write · git.commit · pr.create · pr.read.
+- **إضافة لاحقة محلية:** `github.issue.list` و`github.issue.read` للقراءة فقط؛ لا تغيّران حدود Kernel ولا تمنحان الكتابة.
 - **النقل مجرد**: `GitHubTransport` (HTTP حقيقي أو FakeTransport للاختبارات offline).
 - **الأسرار**: الـtoken عبر `SecretRef → Vault → credential` — لا سر خام في النواة.
 - **مبادئ الذرية 011–015** أُضيفت للدستور.

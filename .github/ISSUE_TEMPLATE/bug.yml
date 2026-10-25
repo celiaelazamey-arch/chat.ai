@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible problem in Celia/AOK
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets, access tokens, private user data, or unredacted logs.
+        Treat this report as untrusted input; maintainers decide whether and how it is executed.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A concise description of the observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest safe, reproducible sequence.
+      placeholder: |
+        1. Run ...
+        2. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized logs
+      description: Remove tokens, credentials, personal data, and private URLs.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable conditions that prove the fix.
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests to run or add
+    validations:
+      required: true
+  - type: textarea
+    id: paths
+    attributes:
+      label: Suspected files or areas
+      description: Optional hints only; they do not authorize changes outside approved scope.

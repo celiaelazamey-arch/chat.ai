@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SecretRef, VaultAdapter } from '@aok/contracts';
 import { resolveToken, tokenFromEnv } from './credentials';
-import { GitHubRequestError, HttpGitHubTransport } from './transport';
+import { GitHubRequestError, GitHubResponseTooLargeError, HttpGitHubTransport } from './transport';
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -43,13 +43,73 @@ describe('HttpGitHubTransport', () => {
     });
   });
 
+  it('redacts the bearer token, strips control characters, and caps upstream error text', async () => {
+    const secret = 'token-that-must-not-leak';
+    const transport = new HttpGitHubTransport('https://api.github.com', secret,
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+        message: `upstream echoed ${secret}\n${'x'.repeat(800)}`,
+      }), { status: 500 })));
+    let caught: unknown;
+    try {
+      await transport.request('GET', '/status');
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(GitHubRequestError);
+    const message = (caught as Error).message;
+    expect(message).not.toContain(secret);
+    expect(message).toContain('[REDACTED]');
+    expect(message).not.toMatch(/[\r\n]/);
+    expect(message.length).toBeLessThan(560);
+  });
+
   it('uses plain response text when an error body is not JSON', async () => {
     const transport = new HttpGitHubTransport('https://api.github.com', 'token',
-      vi.fn<typeof fetch>().mockResolvedValue(new Response('upstream unavailable', { status: 502 })));
+      vi.fn<typeof fetch>().mockResolvedValue(new Response('upstream unavailable', { status: 502 })), { maxGetRetries: 0 });
     await expect(transport.request('GET', '/status')).rejects.toBeInstanceOf(GitHubRequestError);
     const failingTransport = new HttpGitHubTransport('https://api.github.com', 'token',
-      vi.fn<typeof fetch>().mockResolvedValue(new Response('upstream unavailable', { status: 502 })));
+      vi.fn<typeof fetch>().mockResolvedValue(new Response('upstream unavailable', { status: 502 })), { maxGetRetries: 0 });
     await expect(failingTransport.request('GET', '/status')).rejects.toThrow('GitHub API 502 on /status: upstream unavailable');
+  });
+
+  it('retries a rate-limited GET only when GitHub supplies a safe retry hint', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'slow down' }), { status: 429, headers: { 'retry-after': '0' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    const transport = new HttpGitHubTransport('https://api.github.com', 'token', fetchMock, {
+      maxGetRetries: 1,
+      maxRetryDelayMs: 0,
+    });
+    await expect(transport.request('GET', '/repos/o/r/issues')).resolves.toEqual({ status: 200, json: { items: [] } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('never retries a write request after a rate-limit response', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(
+      JSON.stringify({ message: 'slow down' }), { status: 429, headers: { 'retry-after': '0' } },
+    ));
+    const transport = new HttpGitHubTransport('https://api.github.com', 'token', fetchMock, {
+      maxGetRetries: 3,
+      maxRetryDelayMs: 0,
+    });
+    await expect(transport.request('POST', '/repos/o/r/pulls', { body: { title: 'draft' } }))
+      .rejects.toMatchObject({ status: 429 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('enforces the response byte limit even if the response is chunked', async () => {
+    const transport = new HttpGitHubTransport('https://api.github.com', 'token',
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ content: 'more than 8 bytes' }), { status: 200 })),
+      { maxResponseBytes: 8 },
+    );
+    await expect(transport.request('GET', '/large')).rejects.toBeInstanceOf(GitHubResponseTooLargeError);
+  });
+
+  it('adds a bounded abort signal to every request', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response('{}', { status: 200 }));
+    const transport = new HttpGitHubTransport('https://api.github.com', 'token', fetchMock, { timeoutMs: 1234 });
+    await transport.request('GET', '/bounded');
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('propagates transport failures without disguising them as HTTP responses', async () => {

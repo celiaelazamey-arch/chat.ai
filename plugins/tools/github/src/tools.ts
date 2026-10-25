@@ -6,6 +6,18 @@ import { dispatch, GITHUB_ACTIONS, type GithubAction } from './operations';
 import type { GitHubTransport } from './transport';
 
 /** عقود الأدوات (Zod) — لا تنفيذ بدون عقد. */
+const githubIssueSummarySchema = z.object({
+  number: z.number().int().positive(),
+  title: z.string(),
+  body: z.string().nullable(),
+  bodyTruncated: z.boolean(),
+  state: z.string(),
+  url: z.string(),
+  author: z.string().nullable(),
+  labels: z.array(z.string()),
+  updatedAt: z.string(),
+});
+
 export const GITHUB_TOOL_SCHEMAS = {
   'github.repo.read': {
     input: z.object({ owner: z.string().min(1), repo: z.string().min(1) }),
@@ -16,6 +28,21 @@ export const GITHUB_TOOL_SCHEMAS = {
       defaultBranch: z.string(),
       defaultBranchSha: z.string(),
     }),
+  },
+  'github.issue.list': {
+    input: z.object({
+      owner: z.string().min(1),
+      repo: z.string().min(1),
+      state: z.enum(['open', 'closed', 'all']).default('open'),
+      page: z.number().int().min(1).max(1_000).default(1),
+      perPage: z.number().int().min(1).max(100).default(30),
+      labels: z.array(z.string().min(1).max(100)).max(10).optional(),
+    }),
+    output: z.object({ issues: z.array(githubIssueSummarySchema), page: z.number(), perPage: z.number() }),
+  },
+  'github.issue.read': {
+    input: z.object({ owner: z.string().min(1), repo: z.string().min(1), number: z.number().int().positive() }),
+    output: githubIssueSummarySchema,
   },
   'github.repo.branch.create': {
     input: z.object({ owner: z.string().min(1), repo: z.string().min(1), branch: z.string().min(1), from: z.string().min(1) }),
@@ -59,7 +86,7 @@ export const GITHUB_TOOL_SCHEMAS = {
     }),
   },
   'github.pull_request.read': {
-    input: z.object({ owner: z.string().min(1), repo: z.string().min(1), number: z.number() }),
+    input: z.object({ owner: z.string().min(1), repo: z.string().min(1), number: z.number().int().positive() }),
     output: z.object({
       number: z.number(),
       state: z.string(),

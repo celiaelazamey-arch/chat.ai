@@ -8,6 +8,8 @@ import {
 import type { GitHubResponse, GitHubRequestOptions, GitHubTransport } from './index';
 import { ExecutorRegistry, createExecutionContext } from '@aok/execution';
 import { validateCapabilityName } from '@aok/contracts';
+import { fileRead } from './operations';
+import { vi } from 'vitest';
 
 /** نقل وهمي (offline) — يحاكي مسارات GitHub المستخدمة في الـE2E. */
 class FakeGitHub implements GitHubTransport {
@@ -22,6 +24,16 @@ class FakeGitHub implements GitHubTransport {
 
   async request(method: string, path: string, opts?: GitHubRequestOptions): Promise<GitHubResponse> {
     const body = (opts?.body ?? {}) as Record<string, unknown>;
+    if (method === 'GET' && path.includes('/issues?')) {
+      return { status: 200, json: [
+        { number: 12, title: 'bug', body: 'untrusted issue text', state: 'open', html_url: 'https://github.com/o/r/issues/12', user: { login: 'reporter' }, labels: [{ name: 'aok:ready' }], updated_at: '2026-10-24T00:00:00Z' },
+        { number: 13, title: 'pull request', pull_request: { url: 'api' } },
+      ] };
+    }
+    if (method === 'GET' && /\/issues\/\d+$/.test(path)) {
+      if (path.endsWith('/13')) return { status: 200, json: { number: 13, title: 'PR', pull_request: { url: 'api' } } };
+      return { status: 200, json: { number: 12, title: 'bug', body: 'untrusted issue text', state: 'open', html_url: 'https://github.com/o/r/issues/12', user: { login: 'reporter' }, labels: [{ name: 'aok:ready' }], updated_at: '2026-10-24T00:00:00Z' } };
+    }
     // GET /repos/{o}/{r}
     if (method === 'GET' && /^\/repos\/[^/]+\/[^/]+$/.test(path)) {
       return { status: 200, json: { full_name: 'o/r', default_branch: 'main' } };
@@ -74,6 +86,7 @@ class FakeGitHub implements GitHubTransport {
         base: { ref: body.base },
         state: 'open',
         title: body.title,
+        draft: body.draft,
       };
       return { status: 201, json: this.prs[number] };
     }
@@ -91,7 +104,7 @@ class FakeGitHub implements GitHubTransport {
 }
 
 describe('GitHubPlugin — capability names follow the convention', () => {
-  it('all 7 actions are valid names (no reserved namespace)', () => {
+  it('all registered actions are valid names (no reserved namespace)', () => {
     for (const a of GITHUB_ACTIONS) {
       expect(validateCapabilityName(a).valid, a).toBe(true);
     }
@@ -105,9 +118,37 @@ describe('GitHubPlugin — capability names follow the convention', () => {
   });
 });
 
+describe('GitHub API path safety', () => {
+  it('rejects traversal paths before making a request', async () => {
+    const request = vi.fn<GitHubTransport['request']>();
+    await expect(fileRead({ request }, { owner: 'o', repo: 'r', path: '../secret' }))
+      .rejects.toThrow('Invalid repository file path');
+    await expect(fileRead({ request }, { owner: 'o', repo: 'r', path: 'safe/../../secret' }))
+      .rejects.toThrow('Invalid repository file path');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('encodes path segments so delimiters cannot escape the file path', async () => {
+    const request = vi.fn<GitHubTransport['request']>().mockResolvedValue({
+      status: 200,
+      json: { content: Buffer.from('safe').toString('base64'), sha: 'sha' },
+    });
+    await fileRead({ request }, { owner: 'o', repo: 'r', path: 'docs/a?b#c.md' });
+    expect(request).toHaveBeenCalledWith('GET', '/repos/o/r/contents/docs/a%3Fb%23c.md');
+  });
+
+  it('rejects invalid repository coordinates before making a request', async () => {
+    const request = vi.fn<GitHubTransport['request']>();
+    await expect(fileRead({ request }, { owner: 'o/attacker', repo: 'r', path: 'README.md' }))
+      .rejects.toThrow('Invalid GitHub owner');
+    expect(request).not.toHaveBeenCalled();
+  });
+});
+
 describe('GitHubPlugin — offline vertical slice through the unified execute()', () => {
   async function runSlice() {
-    const plugin = new GitHubPlugin(new FakeGitHub());
+    const fake = new FakeGitHub();
+    const plugin = new GitHubPlugin(fake);
     const executors = new ExecutorRegistry();
     plugin.register(executors);
 
@@ -147,12 +188,13 @@ describe('GitHubPlugin — offline vertical slice through the unified execute()'
       executors,
     );
     expect(pr.status).toBe('success');
-    return { pr, write, branch, repo };
+    return { pr, write, branch, repo, fake };
   }
 
   it('executes repo.read → branch.create → file.write → pr.create with evidence', async () => {
-    const { pr, write } = await runSlice();
+    const { pr, write, fake } = await runSlice();
     expect(pr.status).toBe('success');
+    expect(fake.prs[1]?.draft).toBe(true);
     expect(write.evidence).toHaveLength(1);
     expect((pr.output as { number: number }).number).toBe(1);
   });
@@ -169,6 +211,28 @@ describe('GitHubPlugin — offline vertical slice through the unified execute()'
     });
     const res = await execute('github.repo.read', { bad: 'input' }, ctx, executors);
     expect(res.status).toBe('failure');
+  });
+
+  it('reads Issues as untrusted input and excludes pull requests from the issue list', async () => {
+    const plugin = new GitHubPlugin(new FakeGitHub());
+    const executors = new ExecutorRegistry();
+    plugin.register(executors);
+    const { execute } = await import('@aok/execution');
+    const ctx = createExecutionContext({
+      runId: 'issue-run',
+      actorId: 'triager',
+      capabilities: ['github.issue.list', 'github.issue.read'].map((action) => ({ id: action, action, scope: '*', constraints: [] })),
+    });
+    const listed = await execute('github.issue.list', { owner: 'o', repo: 'r', labels: ['aok:ready'] }, ctx, executors);
+    expect(listed.status).toBe('success');
+    expect((listed.output as { issues: { number: number; body: string | null }[] }).issues)
+      .toEqual([{ number: 12, title: 'bug', body: 'untrusted issue text', bodyTruncated: false, state: 'open', url: 'https://github.com/o/r/issues/12', author: 'reporter', labels: ['aok:ready'], updatedAt: '2026-10-24T00:00:00Z' }]);
+    const read = await execute('github.issue.read', { owner: 'o', repo: 'r', number: 12 }, ctx, executors);
+    expect(read.status).toBe('success');
+    expect((read.output as { body: string }).body).toBe('untrusted issue text');
+    const pullRequestNumber = await execute('github.issue.read', { owner: 'o', repo: 'r', number: 13 }, ctx, executors);
+    expect(pullRequestNumber.status).toBe('failure');
+    expect(listed.evidence[0]?.kind).toBe('http_check');
   });
 
   it('pr.read returns the diff (files) for verification', async () => {

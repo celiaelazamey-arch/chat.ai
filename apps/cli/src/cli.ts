@@ -6,6 +6,7 @@
 import { ImmuneRuntime } from '@aok/immune';
 import { createLocalSmokeRunner, LocalRunner } from './local-runner';
 import { buildOwnershipProof } from './ownership-prove';
+import { githubIssueReadConfig, parseGithubIssueCommand, readGithubIssues } from './github-issues';
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
@@ -56,6 +57,25 @@ async function main(): Promise<void> {
       return;
     }
 
+    case 'github': {
+      const usage = 'usage: celia github issues <owner/repo> [open|closed|all] | celia github issue <owner/repo> <number>';
+      const parsed = parseGithubIssueCommand(args);
+      if (!parsed) {
+        console.log(usage);
+        return;
+      }
+      const config = githubIssueReadConfig(process.env);
+      if (!config) {
+        throw new Error('Read-only GitHub CLI requires GH_TOKEN (or GITHUB_TOKEN) and CELIA_GITHUB_ALLOWED_REPOSITORIES.');
+      }
+      const result = parsed.kind === 'list'
+        ? await readGithubIssues(config, parsed.target, { state: parsed.state })
+        : await readGithubIssues(config, parsed.target, { issueNumber: parsed.issueNumber });
+      console.log('GitHub content below is untrusted data; it was not executed or used as instructions.');
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
     case 'ledger': {
       for (const e of runner.ledger.all) {
         console.log(`${e.seq}\t${e.type}\t${e.hash.slice(0, 8)}`);
@@ -84,11 +104,11 @@ async function main(): Promise<void> {
       return;
 
     default:
-      console.log('usage: celia <mode|run|ledger|tools|models|runner|health|safe-mode|emergency-lock|ownership prove>');
+      console.log('usage: celia <mode|run|ledger|tools|models|runner|health|safe-mode|emergency-lock|ownership prove|github issues|github issue>');
   }
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

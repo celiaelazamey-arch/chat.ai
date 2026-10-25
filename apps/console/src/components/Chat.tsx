@@ -95,8 +95,9 @@ export function Chat({ messages, busy, onSend, onSuggest, routeNote }: ChatProps
   const isEmpty = messages.length === 0;
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+    <div className="chat-layout" style={{ display: 'flex', height: '100%', minHeight: 0 }}>
       <div
+        className="chat-main"
         style={{
           flex: 1,
           display: 'flex',
@@ -117,9 +118,9 @@ export function Chat({ messages, busy, onSend, onSuggest, routeNote }: ChatProps
                 ماذا تريد أن تنجز اليوم؟
               </h1>
               <p style={{ color: 'var(--text-dim)', fontSize: 13.5, marginTop: 8, lineHeight: 1.7 }}>
-                مساحة عمل موحّدة تجمع تجربة Manus مع وقت تشغيل Claude Code —
+                أرسل هدفك إلى خدمة التنفيذ الحالية، وتابع الحالة والنتيجة والأدلة المتاحة.
                 <br />
-                والنظام يقرّر داخليًا أي مزوّد نماذج يناسب كل مهمة.
+                تفاصيل خطوات backend تظهر فقط عندما يعيدها عقد الخدمة.
               </p>
               <div
                 style={{
@@ -223,13 +224,14 @@ export function Chat({ messages, busy, onSend, onSuggest, routeNote }: ChatProps
             </button>
           </div>
           <div style={{ textAlign: 'center', color: 'var(--text-faint)', fontSize: 11, marginTop: 8 }}>
-            الواجهة لا تخزّن مفاتيح — الأسرار في الـVault، والتنفيذ يمرّ عبر بوابة المناعة.
+            طلبك يذهب إلى خدمة التنفيذ المضبوطة لهذا التطبيق؛ لا نفترض توافر حصة مجانية لمزوّد خارجي.
           </div>
         </div>
       </div>
 
       {/* شريط سياق النموذج */}
       <div
+        className="chat-context"
         style={{
           width: 236,
           flexShrink: 0,
@@ -241,7 +243,7 @@ export function Chat({ messages, busy, onSend, onSuggest, routeNote }: ChatProps
           overflowY: 'auto',
         }}
       >
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)' }}>سياق المهمة</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)' }}>مسار الطلب</div>
         <div
           style={{
             background: 'var(--bg-raised)',
@@ -253,19 +255,19 @@ export function Chat({ messages, busy, onSend, onSuggest, routeNote }: ChatProps
             gap: 9,
           }}
         >
-          <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>نوع المهمة المكتشف</div>
-          <Pill tone="accent">coding · أدوات مطلوبة</Pill>
-          <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>النموذج الموجَّه</div>
-          <div style={{ fontSize: 12.5, fontFamily: 'var(--mono)', color: 'var(--text)' }}>
-            {routeNote ?? '—'}
+          <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>واجهة التنفيذ</div>
+          <Pill tone="accent">POST /run</Pill>
+          <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>ملاحظة توجيه محلية (للعرض فقط)</div>
+          <div style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--text)' }}>
+            {routeNote ?? 'تظهر بعد إدخال الهدف'}
           </div>
           <div style={{ height: 1, background: 'var(--border)' }} />
           <div style={{ fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.6 }}>
-            الاختيار اقتراح فقط (C17) — لا صلاحيات، وأي قرار سلطة يمرّ عبر Policy Engine.
+            هذا الاقتراح لا يحدد مزوّد التنفيذ ولا يثبت توفره أو حصته؛ خدمة API هي التي تعيد نتيجة الطلب.
           </div>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.7 }}>
-          تسلسل الفشل: Gemini → OpenRouter → HuggingFace → نموذج محلي.
+          لا يوجد تبديل تلقائي لمزوّد النماذج في مسار الواجهة الحالي.
         </div>
       </div>
     </div>

@@ -52,7 +52,7 @@ export default function App() {
   const [project, setProject] = useState<ProjectState>({
     id: 'chat-ai',
     name: 'Celia',
-    repository: 'elazamey/chat.ai',
+    repository: 'celiaelazamey-arch/chat.ai',
     section: 'overview',
   });
 
@@ -67,7 +67,7 @@ export default function App() {
 
     const type = guessType(clean);
     const model = routeTask(type, type === 'coding' || type === 'planning');
-    setRouteNote(model ? `${model.providerId} · ${model.id}` : 'لا نموذج متاح');
+    setRouteNote(model ? `${model.providerId} · ${model.id} (اقتراح غير مستخدم في طلب API)` : 'لا يوجد اقتراح محلي');
     setView('workspace');
     setBusy(true);
     setAgentState((current) => transitionAgentState(current, { type: 'planning' }));
@@ -75,14 +75,17 @@ export default function App() {
     setRunsCount((c) => c + 1);
     setRun({
       id: `run_${ulid()}`,
-      project: 'elazamey/chat.ai',
+      project: 'celiaelazamey-arch/chat.ai',
       goal: clean,
       state: 'running',
       nodes: [
       ],
       files: [],
     });
-    setActivities([{ id: `a_${ulid()}`, kind: 'agent', text: 'بدأت Celia تحليل المهمة', time: nowTime() }]);
+    setActivities([
+      { id: `a_${ulid()}`, kind: 'user', text: 'استلمت الواجهة الهدف', detail: 'تم حفظ الطلب في سجل الجلسة.', time: nowTime() },
+      { id: `a_${ulid()}`, kind: 'tool', text: 'إرسال طلب التنفيذ إلى خدمة API', detail: 'POST /run · بانتظار استجابة الخدمة.', time: nowTime() },
+    ]);
 
     try {
       setAgentState((current) => transitionAgentState(current, { type: 'run.started' }));
@@ -104,7 +107,7 @@ export default function App() {
       } : current);
       setActivities((prev) => [
         ...prev,
-        { id: `a_${ulid()}`, kind: 'tool', text: `اكتمل التنفيذ: ${outcome.verdict}`, detail: `${outcome.evidence.length} evidence items`, time: nowTime() },
+        { id: `a_${ulid()}`, kind: 'tool', text: `وصلت استجابة التنفيذ: ${outcome.verdict}`, detail: `run_id: ${outcome.run_id} · ${outcome.evidence.length} عنصر دليل`, time: nowTime() },
       ]);
       setMessages((prev) => [
         ...prev,
@@ -145,10 +148,10 @@ export default function App() {
   }, [busy]);
 
   return (
-    <div style={{ display: 'flex', height: '100vh' }}>
+    <div className="app-shell" style={{ display: 'flex', height: '100vh' }}>
       <Sidebar view={view} setView={setView} runs={runsCount} />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <Topbar view={view} project="elazamey/chat.ai" />
+      <div className="app-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <Topbar view={view} project="celiaelazamey-arch/chat.ai" />
         <main style={{ flex: 1, minHeight: 0 }}>
           {view === 'workspace' && (
             <AgentWorkspace run={run} activities={activities} agentState={agentState} plan={plan} />
@@ -156,6 +159,7 @@ export default function App() {
           {view === 'home' && (
             <HomeDashboard
               runs={runsCount}
+              lastRun={run}
               onNewTask={() => setView('chat')}
               onOpenTasks={() => setView('tasks')}
               onOpenProjects={() => setView('projects')}

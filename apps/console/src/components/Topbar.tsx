@@ -23,6 +23,7 @@ const TITLES: Record<View, string> = {
 export function Topbar({ view, project }: TopbarProps) {
   return (
     <header
+      className="app-topbar"
       style={{
         height: 52,
         flexShrink: 0,

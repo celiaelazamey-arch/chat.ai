@@ -41,7 +41,7 @@ const SECTION_WORK: Item[] = [
 ];
 
 const SECTION_SYSTEM: Item[] = [
-  { id: 'providers', label: 'مزوّدو الذكاء', icon: Sparkles, hint: 'free' },
+  { id: 'providers', label: 'مزوّدو الذكاء', icon: Sparkles, hint: 'اختياري' },
   { id: 'keys', label: 'مفاتيح API', icon: KeyRound },
   { id: 'settings', label: 'الإعدادات', icon: Settings },
 ];
@@ -98,6 +98,7 @@ export function Sidebar({ view, setView, runs }: SidebarProps) {
 
   return (
     <aside
+      className="app-sidebar"
       style={{
         width: 224,
         flexShrink: 0,
@@ -125,7 +126,7 @@ export function Sidebar({ view, setView, runs }: SidebarProps) {
       </div>
 
       <button
-        onClick={() => setView('workspace')}
+        onClick={() => setView('chat')}
         style={{
           display: 'flex',
           alignItems: 'center',

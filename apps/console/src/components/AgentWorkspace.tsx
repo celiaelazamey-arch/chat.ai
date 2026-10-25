@@ -127,7 +127,7 @@ export function AgentWorkspace({ run, activities, agentState, plan }: AgentWorks
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 340px) 1fr 1fr', minHeight: 360 }}>
+        <div className="agent-content-grid">
           {/* steps */}
           <div style={{ background: 'var(--bg-elev)', padding: 14, borderLeft: '1px solid var(--border)' }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', marginBottom: 10 }}>
@@ -157,12 +157,12 @@ export function AgentWorkspace({ run, activities, agentState, plan }: AgentWorks
                   )}
                 </div>
               )) : (
-                <div className="agent-panel-note">مراحل التنفيذ التفصيلية غير متاحة من backend؛ المعروض أدناه هو ملخص النتيجة الفعلية.</div>
+                <div className="agent-panel-note">لا يعيد backend خطوات مفصّلة في عقد API الحالي؛ ستظهر هنا فقط المراحل المرسلة فعليًا.</div>
               )}
             </div>
 
             <div className="workspace-disclaimer">
-              الموافقات الفعلية غير متاحة في عقد الـAPI الحالي.
+              لا يوفّر عقد API الحالي بيانات موافقات أو تغييرات ملفات.
             </div>
           </div>
 
@@ -212,7 +212,7 @@ export function AgentWorkspace({ run, activities, agentState, plan }: AgentWorks
             >
               <ShieldCheck size={14} color="var(--ok)" style={{ marginTop: 1 }} />
               <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.6 }}>
-                كل كتابة ملف تمرّ عبر بوابة المناعة (Immune Gate) قبل التنفيذ.
+                تفاصيل الكتابة إلى الملفات غير متاحة في استجابة التنفيذ الحالية.
               </div>
             </div>
           </div>
@@ -220,9 +220,10 @@ export function AgentWorkspace({ run, activities, agentState, plan }: AgentWorks
           {/* activity */}
           <div style={{ padding: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', marginBottom: 10 }}>
-              سجل النشاط
+              سجل التقدّم المرئي
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <p className="activity-honesty-note">تحديثات الحالة والاتصال والاستجابة فقط؛ لا يعرض هذا السجل التفكير الداخلي.</p>
+            <div className="activity-timeline" aria-live="polite" aria-label="سجل أحداث التنفيذ">
               <div className="execution-facts">
                 <div><span>Agent state</span><strong>{agentState.state}</strong></div>
                 <div><span>run_id</span><strong>{run.backendRunId ?? 'غير متاح'}</strong></div>
